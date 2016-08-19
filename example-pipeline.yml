@@ -1,0 +1,75 @@
+resource_types:
+
+  # the gradle-cache resource type
+  - name: gradle-cache
+    type: docker-image
+    source: {repository: projectfalcon/gradle-cache-resource, tag: latest}
+
+resources:
+
+  # a perfectly normal source repository with lashings and lashings of dependencies
+  - name: spring-repo
+    type: git
+    source: &spring-repo-source # apply a YAML anchor so we can refer to this in the cache resource
+      uri: https://github.com/spring-projects/spring-framework
+
+  # a resource caching the dependencies listed in the source repository
+  - name: spring-repo-cache
+    type: gradle-cache # as defined above
+    source:
+      <<: *spring-repo-source # the source is the same as the corresponding git resource ...
+      paths: # ... except that it's only interested in files listing dependencies
+        - build.gradle
+        - spring-oxm/oxm.gradle
+
+jobs:
+
+  # a job to run the tests
+  - name: check
+    plan:
+      - get: spring-repo # depend on and trigger off the source repository
+        trigger: true
+      - get: spring-repo-cache # depend on but don't trigger off the cache
+      - task: check
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source: {repository: java, tag: '8'}
+          inputs:
+            - name: spring-repo
+            - name: spring-repo-cache # remember to accept the cache resource as a task input
+          params:
+            GRADLE_USER_HOME: ../spring-repo-cache/.gradle # misuse params to tell Gradle where to find the cache
+            TERM: dumb
+          run:
+            dir: spring-repo
+            path: ./gradlew
+            args:
+              - check
+
+  # a job to assemble the artifacts
+  - name: assemble
+    plan:
+      - get: spring-repo
+        passed: [check] # only run this job if the tests passed
+        trigger: true
+      - get: spring-repo-cache
+        passed: [check] # not strictly necessary, but makes the layout in the UI cleaner
+      - task: assemble # this task is basically the same as the check task above
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source: {repository: java, tag: '8'}
+          inputs:
+            - name: spring-repo
+            - name: spring-repo-cache
+          params:
+            GRADLE_USER_HOME: ../spring-repo-cache/.gradle
+            TERM: dumb
+          run:
+            dir: spring-repo
+            path: ./gradlew
+            args:
+              - assemble
