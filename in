@@ -23,3 +23,5 @@ EOF
 ./gradlew __cacheDependencies >&2
 
 cp -a ~/.gradle "$DEST_DIR/"
+
+echo "Cached $(du -hs "$DEST_DIR/" | cut -f 1) in $(find "$DEST_DIR/" -type f | wc -l) files" >&2
